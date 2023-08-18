@@ -1,0 +1,256 @@
+---
+title: "final_df_17_21_clustering_v2"
+author: "Chen Lin, Xiaoyi Wang"
+date: "2023-07-19"
+output: html_document
+
+
+---
+```{r, warning=FALSE, message=FALSE}
+library(corrplot)
+library(lubridate)
+```
+
+
+```{r}
+data <- read.csv("final_df_17_21.csv")
+
+#View(data)
+```
+
+```{r}
+# head(data)
+```
+
+```{r}
+# Step 1: Convert to Date format 
+data$creation_date <- as.Date(data$creation_date)
+data$last_access_date <- as.Date(data$last_access_date)
+
+# Step 2: Calculate the difference between today and 
+today <- as.Date('2023-07-19')
+date_diff1 <- difftime(today, data$creation_date, units = "days")
+date_diff2 <- difftime(today, data$last_access_date, units = "days")
+
+# Step 3: Create a new factor to store the calculated days
+data$days_since_creation <- as.numeric(date_diff1)
+data$days_since_last_access <- as.numeric(date_diff2)
+
+```
+
+
+```{r}
+# Specify the variables to drop
+variables_to_drop <- c("id", "display_name", "location", "about_me", 
+                       "highest_scoring_question", "highest_scoring_answer",
+                       "creation_date", "last_access_date", "_merge",
+                       "account_age", "harmonic_mean", "ques_answer_cnt_avg", 
+                       "ques_score_avg", "ques_view_cnt_avg", "ans_score_avg", 
+                       "account_age_days", "score_difference",
+                       "ques_median_score", "ans_median_score","X_merge",
+                       "account_age_years", "year")
+
+# Drop the variables from the dataset
+data <- data[, setdiff(names(data), variables_to_drop)]
+```
+
+
+```{r}
+str(data)
+```
+```{r}
+# head(data)
+```
+
+```{r}
+# View(data)
+```
+
+
+```{r}
+summary(data)
+```
+
+
+```{r}
+# Check for missing values in each variable
+missing_values <- sapply(data, function(x) sum(is.na(x)))
+
+# Print the number of missing values in each variable
+print(missing_values)
+```
+
+```{r}
+# Check for infinite values
+is_inf <- apply(data, 2, function(x) any(!is.finite(x)))
+inf_vars <- names(is_inf)[is_inf]
+
+# Print variables with infinite values
+print(inf_vars)
+```
+
+```{r}
+# Drop harmonic_mean_with_reputation
+data <- subset(data, select = -harmonic_mean_with_reputation)
+```
+
+
+```{r}
+# Drop correlated factors
+data <- subset(data, select = -c(ques_score, ans_score, ques_cnt))
+```
+
+Scale the data
+```{r}
+# Scale the data
+df = scale(data)
+#View(df)
+```
+
+
+```{r}
+# Example of correlation matrix heatmap using ggplot2
+library(ggplot2)
+library(reshape2)
+
+# Assuming your data is stored in a data frame called 'data'
+cor_matrix <- cor(df, method = "pearson") # Calculate the correlation matrix
+melted_cor <- melt(cor_matrix)
+
+ggplot(melted_cor, aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+```{r}
+### PCA
+library("ggplot2")
+# library("FactoMineR")
+# library("factoextra")
+```
+
+```{r}
+library("FactoMineR")
+
+res.pca <- PCA(data, scale.unit = TRUE, graph = FALSE) # scale unit
+print(res.pca)
+```
+
+
+```{r}
+library("factoextra")
+
+eig.val <- get_eigenvalue(res.pca)
+eig.val
+```
+
+
+```{r}
+fviz_eig(res.pca, addlabels = TRUE, ylim = c(0,50))
+```
+# We want to stop at the eighth principal component. 41% of the information contained in the data are retained by the first eight principal components.
+
+
+```{r}
+var <- get_pca_var(res.pca)
+var
+```
+
+```{r}
+# coordinates of variables
+head(var$coord)
+
+# quality on the factor map
+head(var$cos2)
+
+# contribution of variables
+head(var$contrib)
+```
+
+
+```{r}
+# color by cos2 values: quality on the factor map
+fviz_pca_var(res.pca, col.var = "cos2",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE,
+             alpha.var = "cos2"
+)
+```
+
+```{r}
+# visualize the cos2 of variables on all the dimensions
+library("corrplot")
+corrplot(var$cos2, is.corr = FALSE)
+```
+
+
+
+
+# Kmeans Clustering with PCA
+
+
+```{r, warning = FALSE}
+# Elbow chart
+set.seed(123)
+twcv = function(k) kmeans(df,k,nstart=25)$tot.withinss
+#plot twcv
+k = 1:16
+twcv_values = sapply(k,twcv)
+plot(k,twcv_values,type="b",pch=19,xlab="Number of clusters k",ylab="TWCV")
+grid()
+```
+```{r}
+set.seed(42)  # Set a seed for reproducibility
+
+k = 4
+kmeans_result <- kmeans(df, centers = k, nstart = 25)
+
+# Access the cluster assignments
+cluster_assignments <- kmeans_result$cluster
+
+fviz_cluster(kmeans_result, geom = "point", data = df)
+```
+
+```{r}
+cluster_number = as.factor(kmeans_result$cluster)
+data$cluster = cluster_number
+head(data)
+```
+
+```{r}
+# View(data)
+```
+
+```{r}
+library(ggplot2)
+library(factoextra)
+
+# biplot with clusters
+m1 = prcomp(df, scale=T)
+fviz_pca_biplot(m1, geom = "point", col.var = "black",
+  habillage = cluster_number, labelsize = 3, repel = TRUE)
+```
+## Summary:
+
+Group 1 - reputable contributors: reputable, active, long-time dedicated users. great contribution into building the community with high quality contents. willing to offer constructive feedback, by answering questions and voting to share their opinions and make impacts.
+
+Group 2 - inactive users: low participation. they stopped making contribution.
+
+Group 3 - curious learner: most active in raising questions. also willing to give it a try in answering questions as part of learning. (not necessarily giving perfect answers that receive high scores)
+
+Group 4 - community builder: no specific preference in answering or asking questions.
+
+
+```{r}
+print("Within cluster sum of squares by cluster:")
+print(kmeans_result$betweenss/kmeans_result$totss)
+print("Size of each cluster:")
+print(kmeans_result$size)
+print(kmeans_result$centers)
+```
+
+
+
